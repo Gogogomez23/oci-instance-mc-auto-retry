@@ -2,23 +2,37 @@ name: OCI Stack Apply Auto-Retry
 
 on:
   schedule:
-    # Runs every 12 minutes automatically
     - cron: '*/12 * * * *'
-  workflow_dispatch: # Allows you to trigger manually from GitHub UI anytime
+  workflow_dispatch:
 
 jobs:
   retry-oci-apply:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up OCI CLI
-        uses: oracle-actions/setup-oci-cli@v1.3.2
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          user: ${{ secrets.OCI_USER_OCID }}
-          tenancy: ${{ secrets.OCI_TENANCY_OCID }}
-          fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-          region: ${{ secrets.OCI_REGION }}
-          api_key: ${{ secrets.OCI_KEY_FILE }}
+          python-version: '3.x'
+
+      - name: Install OCI CLI
+        run: |
+          pip install oci-cli
+
+      - name: Configure OCI CLI Credentials
+        run: |
+          mkdir -p ~/.oci
+          echo "${{ secrets.OCI_KEY_FILE }}" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+
+          cat <<EOF > ~/.oci/config
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          key_file=~/.oci/oci_api_key.pem
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          EOF
 
       - name: Check Stack Status & Trigger Apply Job
         run: |
@@ -26,7 +40,6 @@ jobs:
           
           echo "Checking recent jobs for Stack: $STACK_ID..."
           
-          # Get the status of the latest job
           LAST_JOB_STATE=$(oci resource-manager job list --stack-id $STACK_ID --limit 1 --query "data[0].\"lifecycle-state\"" --raw-output 2>/dev/null || echo "UNKNOWN")
           
           echo "Latest job status: $LAST_JOB_STATE"
